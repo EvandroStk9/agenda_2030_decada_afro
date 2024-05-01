@@ -1,0 +1,199 @@
+---
+title: "Cálculo dos Indicadores dos ODS 1e 4"
+author: "Ana Clara Ramos Simões"
+date: "02/2024"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# ---
+```{r include = TRUE, echo = TRUE, warning = FALSE, message = FALSE}
+```
+
+# 1. Packages and functions
+```{r include = TRUE, echo = TRUE, warning = FALSE, message = FALSE}
+pacotes = c("dplyr", 
+            "readr",
+            "xlsx",
+            "PNADcIBGE",
+            "survey")
+
+
+lapply(pacotes, library, character.only = T)
+
+rm(pacotes)
+
+# source("programas/funcoes/fn_calculo_indicador.R")
+run_analysis <- function(data, variable, indicador, subgroups, target_variable, levels_to_exclude) {
+  if (length(levels_to_exclude) == 0) {
+    levels_to_run <- levels(data$variables[[variable]])
+  } else {
+    levels_to_run <- setdiff(levels(data$variables[[variable]]), levels_to_exclude)
+  }
+  
+  all_results <- list()
+  
+  # Calcular o total para cada subgrupo
+  total_results <- list()
+  
+  for (subgroup in subgroups) {
+    total_result <- svyby(
+      formula = as.formula(paste0("~", target_variable)),
+      by = as.formula(paste0("~", subgroup)),
+      design = data,
+      FUN = svymean,
+      na.rm = TRUE,
+      estimate.only = TRUE
+    )
+    
+    total_result <- total_result[, c(1, 3)]
+    colnames(total_result) <- c("subgrupo", "total")
+    
+    total_results[[subgroup]] <- total_result
+  }
+  
+  combined_total_results <- do.call(rbind, total_results)
+  all_results[["total"]] <- combined_total_results
+  
+  for (level in levels_to_run) {
+    level_name <- tolower(level)
+    
+    level_results <- list()
+    
+    for (subgroup in subgroups) {
+      subset_data <- subset(data, data$variables[[variable]] == level)
+      
+      result <- svyby(
+        formula = as.formula(paste0("~", target_variable)),
+        by = as.formula(paste0("~", subgroup)),
+        design = subset_data,
+        FUN = svymean,
+        na.rm = TRUE,
+        estimate.only = TRUE
+      )
+      
+      result <- result[, c(1, 3)]
+      colnames(result) <- c("subgrupo", level_name)
+      
+      # Alterar valor na primeira linha e primeira coluna para "Brasil" quando subgrupo for igual a "Ano"
+      if (subgroup == "Ano") {
+        result[1, 1] <- "Brasil"
+      }
+      
+      level_results[[subgroup]] <- result
+    }
+    
+    combined_results <- do.call(rbind, level_results) # Pegar apenas a segunda coluna
+    all_results[[level_name]] <- combined_results
+  }
+  
+  # Usar o total como base
+  final_result <- all_results[["total"]]
+  
+  # Adicionar colunas dos outros níveis (pegando apenas a segunda coluna)
+  for (i in 1:length(levels_to_run)) {
+    final_result <- cbind(final_result, all_results[[tolower(levels_to_run[i])]][, 2])
+  }
+  
+  # Renomear colunas
+  colnames(final_result)[-1] <- c("total", tolower(levels_to_run))
+  
+  rownames(final_result) <- NULL
+  
+  return(final_result)
+}
+```
+
+
+# 2. Leitura de bases
+```{r include = TRUE, echo = TRUE, warning = FALSE, message = FALSE}
+db = get_pnadc(
+  year = 2022,
+  interview = 1,
+  deflator = TRUE,
+  defyear = 2017,
+  # defperiod = 1,
+  design = TRUE
+)
+```
+
+
+# 3. Ajustes de bases
+
+Nesta etapa estamos gerando as variáveis derivadas necessárias para calcular os indicadores. Para calcular o %, será utilizado uma variável dummy em que é igual a 1 quando ocorre o que queremos medir. Por exemplo, se o indicador tem o objetivo de calcular o percentual de pessoas que vivem abaixo da linha de pobreza, a dummy deste indicador será 1 quando o indivíduo está abaixo da linha de pobreza.
+```{r include = TRUE, echo = TRUE, warning = FALSE, message = FALSE}
+# PPC R$ 2,33 para US$ 1,00 (2017)
+ppc = 2.3273771
+ln_pobreza_ext = ppc*3.2
+ln_pobreza = ppc*6.85
+
+db = update(
+  db,
+  VD5002_defl = VD5002*CO2e,
+  VD5002_defl_dia = VD5002_defl/30,
+  dummy_ln_pobreza_ext = as.factor(ifelse(VD5002_defl_dia >= ln_pobreza_ext, 0, 1)),
+  dummy_ln_pobreza = as.factor(ifelse(VD5002_defl_dia >= ln_pobreza, 0, 1)),
+  regiao = as.factor(case_when(
+    UF %in% c("Rondônia", "Acre", "Amazonas", "Roraima", "Pará", "Amapá", "Tocantins") ~ "Norte",
+    UF %in% c("Maranhão", "Piauí", "Ceará", "Rio Grande do Norte", "Paraíba", "Pernambuco", "Alagoas", "Sergipe", "Bahia") ~ "Nordeste",
+    UF %in% c("Mato Grosso do Sul", "Mato Grosso", "Goiás", "Distrito Federal") ~ "Centro-Oeste",
+    UF %in% c("Minas Gerais", "Espírito Santo", "Rio de Janeiro", "São Paulo") ~ "Sudeste",
+    UF %in% c("Paraná", "Rio Grande do Sul", "Santa Catarina") ~ "Sul",
+    TRUE ~ NA_character_
+  ))
+)
+
+```
+
+
+# 4. Cálculo
+
+Após definir uma função que automatiza a construção de indicadores, definimos as desagregações que serão utilizadas nos indicadores. Elas serão salvas como um vetor com o nome das variáveis. Como o objetivo principal é ter resultados da desigualdade racial, a desagregação principal serão as categorias de cor/raça e todas as demais definidas serão calculadas para cada categoria de cor/raça.
+
+```{r include = TRUE, echo = TRUE, warning = FALSE, message = FALSE}
+subgroups <- c(
+  "Ano",
+  "regiao",
+  "V2007", #sexo
+  "VD2006", #faixa etária
+  "V1022", #localizacao (urbano/rural)
+  "VD4002" #condicao de ocupacao
+)
+
+```
+
+# Indicador 1.1.1
+
+Percentual da população abaixo da linha internacional de pobreza extrema ($3,20), por sexo, raça/cor idade, status de ocupação, localização geográfica (urbano/rural) e território étnico-racial
+```{r include = TRUE, echo = TRUE, warning = FALSE, message = FALSE}
+result_ind_1.1.1 <- run_analysis(
+  data = db, # base no formato svydesign
+  variable = "V2010", # variavel de cor/raca que vai ser a desagregação maior
+  indicador = "1.1.1", # nome/num do indicador
+  subgroups = subgroups, # outras varaveis de desagregação menor (dentro de cor/raca)
+  target_variable = "dummy_ln_pobreza_ext", # variavel que estamos calculando o percentual (dummy em que 1 = proporção que queremos encontrar)
+  levels_to_exclude = c("Ignorado") # se tiver algum level que em "variable" que queremos ignorar, se não levels_to_exclude = NULL
+)
+
+print(result_ind_1.1.1)
+```
+
+
+# Indicador 1.2.1
+Percentual da população abaixo da linha nacional de pobreza ($6,85), por sexo, raça/cor idade, status de ocupação, localização geográfica (urbano/rural) e território étnico-racial.
+```{r include = TRUE, echo = TRUE, warning = FALSE, message = FALSE}
+result_ind_1.2.1 <- run_analysis(
+  data = db, # base no formato svydesign
+  variable = "V2010", # variavel de cor/raca que vai ser a desagregação maior
+  indicador = "1.1.1", # nome/num do indicador
+  subgroups = subgroups, # outras varaveis de desagregação menor (dentro de cor/raca)
+  target_variable = "dummy_ln_pobreza", # variavel que estamos calculando o percentual (dummy em que 1 = proporção que queremos encontrar)
+  levels_to_exclude = c("Ignorado") # se tiver algum level que em "variable" que queremos ignorar, se não levels_to_exclude = NULL
+)
+
+print(result_ind_1.2.1)
+```
+
+
+
