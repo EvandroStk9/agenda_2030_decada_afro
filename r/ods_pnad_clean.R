@@ -51,7 +51,8 @@ list_db <- map(
     ano = Ano,
     sexo = case_when(
       V2007 %in% c("Homem", "Masculino") ~ "Masculino",
-      V2007 %in% c("Mulher", "Masculino") ~ "Feminino"
+      V2007 %in% c("Mulher", "Feminino") ~ "Feminino",
+      TRUE ~ V2007
     ),
     local = V1022,
     VD5002_defl = VD5002*CO2e,
