@@ -22,11 +22,16 @@ list_db <- read_rds(
 
 # 3. Parâmetros  ---------------------------------------------------------------------
 
+#
 list_subgroups <- list(
   c("ano"),
   c("ano","sexo"),
+  c("ano","raca"),
+  c("ano","local"),
   c("ano","sexo","raca"),
-  c("ano","sexo","raca", "local")
+  c("ano","sexo","local"),
+  c("ano","raca","local"),
+  c("ano","sexo","raca","local")
 )
 
 #
@@ -59,7 +64,10 @@ tic()
 ind_8_5_2 <- map_df(
   list_db,
   ~get_ind_8_5_2(db = .x)
-)
+) %>%
+  mutate(across(where(is_character), 
+                ~replace_na(.x, "Total"))
+  )
 toc()
 
 # 5. Exporta -------------------------------------------------------------------
