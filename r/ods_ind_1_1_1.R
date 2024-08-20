@@ -6,7 +6,7 @@ pacotes = c("dplyr",
             "stringr",
             "tidyr",
             "readr",
-            "xlsx",
+            "writexl",
             "here",
             "survey",
             "tictoc")

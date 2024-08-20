@@ -6,7 +6,7 @@ pacotes = c("dplyr",
             "stringr",
             "tidyr",
             "readr",
-            "xlsx",
+            "writexl",
             "here",
             "survey",
             "tictoc")
@@ -41,7 +41,7 @@ list_expr <- map(list_subgroups, ~paste0("interaction(", paste(.x, collapse = ",
 # 3. Função ------------------------------------------------------------------
 
 #
-get_ind_4_3_1 <- function(db) {
+get_ind_4_1_2_1 <- function(db) {
   map2(
     list_subgroups,
     list_expr,
@@ -63,7 +63,7 @@ get_ind_4_3_1 <- function(db) {
 
 #
 tic()
-ind_4_3_1 <- map_df(
+ind_4_1_2_1 <- map_df(
   map(list_db, ~subset(.x, V2009 >= 15 & V2009 <= 17)),
   ~get_ind_4_3_1(db = .x)
 ) %>%

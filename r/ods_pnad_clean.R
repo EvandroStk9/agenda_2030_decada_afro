@@ -1,18 +1,28 @@
 
 # 1. Packages ---------------------------------------------------------------------
-pacotes = c("dplyr",
+packages = c("dplyr",
             "purrr",
             "tibble",
             "stringr",
             "tidyr",
             "readr",
-            "xlsx",
+            "fs",
             "here",
-            "survey",
-            "tictoc")
+            "survey")
 
 #
-lapply(pacotes, library, character.only = T)
+packages_installed <- data.frame(
+  packages = packages,
+  installed = packages %in% rownames(installed.packages())
+) 
+
+#
+if (any(packages %in% packages_installed$installed == FALSE)) {
+  install.packages(packages[!packages_installed$installed])
+}
+
+#
+invisible(lapply(packages, library, character.only = TRUE))
 
 # 2. Leitura de bases -------------------------------------------------------------
 
@@ -117,6 +127,19 @@ list_db <- map(
         "Fundamental incompleto ou equivalente",
         "Fundamental completo ou equivalente",
         "Médio incompleto ou equivalente"
+      ) ~ 0,
+      TRUE ~ NA_real_
+    ),
+    n_es_comp = case_when(
+      VD3004 %in% c(
+        "Superior completo"
+      ) ~ 1,
+      VD3004 %in% c(
+        "Sem instrução e menos de 1 ano de estudo",
+        "Fundamental incompleto ou equivalente",
+        "Fundamental completo ou equivalente",
+        "Médio incompleto ou equivalente",
+        "Médio completo ou equivalente"
       ) ~ 0,
       TRUE ~ NA_real_
     )

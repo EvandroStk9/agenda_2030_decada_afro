@@ -41,12 +41,12 @@ list_expr <- map(list_subgroups, ~paste0("interaction(", paste(.x, collapse = ",
 # 3. Função ------------------------------------------------------------------
 
 #
-get_ind_4_3_2 <- function(db) {
+get_ind_4_1_2_2 <- function(db) {
   map2(
     list_subgroups,
     list_expr,
     ~svyby(
-      formula = ~n_es_comp,
+      formula = ~n_em_comp,
       by = as.formula(paste0("~", .y)),
       design = db,
       FUN = svymean,
@@ -63,8 +63,8 @@ get_ind_4_3_2 <- function(db) {
 
 # 
 tic()
-ind_4_3_2 <- map_df(
-  map(list_db, ~subset(.x, V2009 >= 18 & V2009 <= 30)),
+ind_4_1_2_2 <- map_df(
+  map(list_db, ~subset(.x, V2009 >= 18 & V2009 <= 20)),
   ~get_ind_4_3_2(db = .x)
 ) %>%
   mutate(across(where(is_character), 
