@@ -142,6 +142,26 @@ list_db <- map(
         "Médio completo ou equivalente"
       ) ~ 0,
       TRUE ~ NA_real_
+    ),
+    n_es = case_when(
+      VD3004 %in% c(
+        "Superior completo",
+        "Superior incompleto ou equivalente"
+      ) ~ 1,
+      VD3004 %in% c(
+        "Sem instrução e menos de 1 ano de estudo",
+        "Fundamental incompleto ou equivalente",
+        "Fundamental completo ou equivalente",
+        "Médio incompleto ou equivalente",
+        "Médio completo ou equivalente"
+      ) ~ 0,
+      TRUE ~ NA_real_
+    ),
+    n_pre_escola = case_when(
+      V3003A %in% c(
+        "Pré-escola"
+      ) ~ 1,
+      TRUE ~ 0
     )
   )
 )
