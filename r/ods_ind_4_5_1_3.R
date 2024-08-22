@@ -1,61 +1,103 @@
 
+# 1. Packages ---------------------------------------------------------------------
 
-# 1. Pacotes --------------------------------------------------------------
+#
+#options(survey.lonely.psu = "adjust")
 
+#
 pacotes = c("dplyr",
-            "here",
             "purrr",
+            "furrr",
+            "tibble",
+            "stringr",
+            "tidyr",
             "readr",
-            "survey")
+            "writexl",
+            "here",
+            "survey",
+            "tictoc")
 
-lapply(pacotes, library, character.only = T)
+#
+lapply(pacotes, library, character.only = TRUE)
 
+#
+plan(multisession, workers = parallel::detectCores())
 
-### 3. Calculo --------------------------------------------------------------- 
-
-# Percentual de estudantes do 3º ano com proficiência básica ou adequada em matemática e em língua portuguesa - Rede Pública de Ensino (em %)
-
-# faixa de corte nível basico 3 ano: LP maior ou igual 250 ; MT maior ou igual 275
-LP_3EM_2015 = svyby(
-  formula = as.formula(~PROFICIENCIA_LP_SAEB >= 250),
-  by = as.formula(~SEXO+RACA),
-  design = design,
-  FUN = svymean,
-  na.rm = TRUE,
-  estimate.only = TRUE
+# 2. Leitura de bases -----------------------------------------------------
+list_db <- read_rds(
+  here("data", "2_clean", "ods_saeb_clean.rds")
 )
 
-MT_3EM_2015 = svyby(
-  formula = as.formula(~PROFICIENCIA_MT_SAEB >= 275),
-  by = as.formula(~SEXO+RACA),
-  design = design,
-  FUN = svymean,
-  na.rm = TRUE,
-  estimate.only = TRUE
+# 3. Parâmetros  ---------------------------------------------------------------------
+
+#
+list_subgroups <- list(
+  c("ANO"),
+  c("ANO","SEXO"),
+  c("ANO","RACA"),
+  c("ANO","SEXO","RACA")
 )
 
+#
+list_expr <- map(list_subgroups, ~paste0("interaction(", paste(.x, collapse = ", "), ")"))
 
-## 2021
-# Percentual de estudantes do 3º ano com proficiência básica ou adequada em matemática e em língua portuguesa - Rede Pública de Ensino (em %)
 
-# faixa de corte nível basico 3 ano: LP maior ou igual 250 ; MT maior ou igual 275
+# 3. Função ---------------------------------------------------------------
 
-LP_3EM_2021 = svyby(
-  formula = as.formula(~PROFICIENCIA_LP_SAEB >= 250),
-  by = as.formula(~SEXO+RACA),
-  design = design,
-  FUN = svymean,
-  na.rm = TRUE,
-  estimate.only = TRUE
-)
 
-MT_3EM_2021 = svyby(
-  formula = as.formula(~PROFICIENCIA_MT_SAEB >= 275),
-  by = as.formula(~SEXO+RACA),
-  design = design,
-  FUN = svymean,
-  na.rm = TRUE,
-  estimate.only = TRUE
-)
+#
+get_ind_4_5_1_3 <- function(db) {
+  future_map2(
+    list_subgroups,
+    list_expr,
+    ~svyby(
+      formula = ~N_PROFICIENCIA,
+      by = as.formula(paste0("~", .y)),
+      design = db,
+      FUN = svymean,
+      vartype = "ci",
+      na.rm = TRUE) %>%
+      as.data.frame() %>%
+      separate_wider_delim(.y, delim = ".", names = .x)
+  ) %>%
+    bind_rows()
+}
+
+# 4. Estimativa -----------------------------------------------------------
+
+
+# Amostra de 1% -> 62.998 sec elapsed (1 min 3 sec)
+# Esperado para 100%: 17 hrs 29 min 58 sec
+tic()
+ind_4_5_1_3 <- future_map_dfr(
+  list_db,
+  ~get_ind_4_5_1_3(db = .x)
+) %>%
+  mutate(across(where(is_character), 
+                ~replace_na(.x, "Total"))
+  )
+toc()
+
+#
+plan(sequential)
+
+
+# 5. Exporta --------------------------------------------------------------
+
+# Cria lista com objetos do environment 
+list_outputs <- mget(ls(.GlobalEnv, pattern = "^ind_.*"))
+
+# Cria pastas nomeadas de acordo com os nomes dos objetos
+names(list_outputs) %>%
+  map(~fs::dir_create(here("outputs", "mvp", .x)))
+
+# Cria arquivos em formato planilha/.xlsx
+list_outputs %>%
+  map2(names(.),
+       ~writexl::write_xlsx(.x,
+                            here("outputs", "mvp", .y,
+                                 paste0(.y, ".xlsx")))
+  )
+
 
 
